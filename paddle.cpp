@@ -10,7 +10,8 @@ Paddle::Paddle(float posX, float posY, float w, float h, float sp, Color c)
     color = c;
 }
 
-void Paddle::Update()
+// --- MODIFIED: Now takes gameArea to know its bounds ---
+void Paddle::Update(Rectangle gameArea)
 {
     // --- Mouse Control (Active) ---
     // This is the one we talked about that feels more natural
@@ -30,14 +31,14 @@ void Paddle::Update()
     }
     */
 
-    // --- Screen Clamping (so it doesn't go off-screen) ---
-    if (x <= 0)
+    // --- MODIFIED: Screen Clamping is now GAME AREA Clamping ---
+    if (x <= gameArea.x)
     {
-        x = 0;
+        x = gameArea.x;
     }
-    if (x + width >= GetScreenWidth())
+    if (x + width >= gameArea.x + gameArea.width)
     {
-        x = GetScreenWidth() - width;
+        x = gameArea.x + gameArea.width - width;
     }
 }
 

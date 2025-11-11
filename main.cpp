@@ -1,46 +1,55 @@
 #include "raylib.h"
 #include "ball.h"
 #include "Paddle.h"
-#include "Brick.h" // <-- 1. INCLUDE THE NEW BRICK CLASS
+#include "Brick.h"
 #include <vector>
 #include <iostream>
-#include <string> // <-- ADDED: Need this to draw text
+#include <string>
 
-// --- 2. ADDED: A FUNCTION TO CREATE OUR RANDOM LEVEL ---
-void CreateLevel(std::vector<Brick> &bricks, int screenWidth)
+// --- A FUNCTION TO CREATE OUR RANDOM LEVEL ---
+// Takes the vector of bricks (by reference) and the gameArea to calculate offsets
+void CreateLevel(std::vector<Brick> &bricks, Rectangle gameArea)
 {
     bricks.clear(); // Clear out any old bricks
 
-    // Define the layout properties
+    // Brick layout parameters
     const int rowCount = 5;
     const int colCount = 10;
-    const float brickWidth = 60.0f;
+    const float brickWidth = 70.0f;
     const float brickHeight = 20.0f;
     const float padding = 5.0f;
 
     // Calculate the total width of the block of bricks
     float totalBlockWidth = (colCount * brickWidth) + ((colCount - 1) * padding);
-    // Calculate the X offset to center the block
-    float offsetX = (screenWidth - totalBlockWidth) / 2.0f;
-    float offsetY = 50.0f; // Start 50px from the top
+    // --- Offset is now relative to the gameArea ---
+    float offsetX = gameArea.x + (gameArea.width - totalBlockWidth) / 2.0f;
+    float offsetY = gameArea.y + 50.0f; // Start 50px from the top of the game area
 
     for (int r = 0; r < rowCount; r++)
     {
         for (int c = 0; c < colCount; c++)
         {
-            // --- THIS IS THE RANDOM PART ---
-            // 50/50 chance to spawn a brick
+            // --- Randomize! ---
+            // 50/50 chance for a brick to spawn
             if (GetRandomValue(0, 1) == 1)
             {
                 float brickX = offsetX + c * (brickWidth + padding);
                 float brickY = offsetY + r * (brickHeight + padding);
 
-                // Give it a random color
-                Color color = Color{(unsigned char)GetRandomValue(50, 220),
-                                    (unsigned char)GetRandomValue(50, 220),
-                                    (unsigned char)GetRandomValue(50, 220), 255};
+                // --- NEW: Set Health, Score, and Color ---
+                int brickHealth = GetRandomValue(1, 3);
+                int brickScore = brickHealth * 10; // 10, 20, or 30 points
+                Color brickColor;
 
-                bricks.push_back(Brick(brickX, brickY, brickWidth, brickHeight, color));
+                if (brickHealth == 3)
+                    brickColor = GRAY;
+                else if (brickHealth == 2)
+                    brickColor = ORANGE;
+                else
+                    brickColor = RED;
+
+                // --- MODIFIED: Use new constructor ---
+                bricks.push_back(Brick(brickX, brickY, brickWidth, brickHeight, brickHealth, brickScore, brickColor));
             }
         }
     }
@@ -48,115 +57,123 @@ void CreateLevel(std::vector<Brick> &bricks, int screenWidth)
 
 int main(void)
 {
-    const int screenWidth = 800;
-    const int screenHeight = 600;
+    // --- 1. DEFINE NEW SCREEN LAYOUT ---
+    const int gameAreaWidth = 800;
+    const int gameAreaHeight = 900;
+    const int uiPanelWidth = 300; // <-- MODIFIED: Was 250, now wider
 
-    InitWindow(screenWidth, screenHeight, "Simple Ball Animation");
+    const int totalScreenWidth = gameAreaWidth + 2 * uiPanelWidth; // 800 + 300 + 300 = 1400
+    const int totalScreenHeight = gameAreaHeight;                  // 900
 
-    // Vector for mah bawls
+    Rectangle gameArea = {(float)uiPanelWidth, 0.0f, (float)gameAreaWidth, (float)gameAreaHeight};
+
+    // --- 2. INITIALIZE WITH NEW TOTAL WIDTH ---
+    InitWindow(totalScreenWidth, totalScreenHeight, "Brick Breaker Madness");
+
     std::vector<Ball> balls;
-
-    // --- 3. ADDED: Vector for the bricks ---
     std::vector<Brick> bricks;
 
-    // --- 4. ADDED: Create the first random level ---
-    CreateLevel(bricks, screenWidth);
+    CreateLevel(bricks, gameArea);
 
-    // --- CREATE THE PADDLE ---
-    // --- 2. CREATE THE PADDLE ---
+    // --- CREATE THE PADDLE (Relative to gameArea) ---
     float paddleWidth = 100.0f;
     float paddleHeight = 20.0f;
     Paddle paddle(
-        (screenWidth / 2) - (paddleWidth / 2), // Centered X
-        screenHeight - paddleHeight - 20,      // At the bottom (20px padding)
+        gameArea.x + (gameArea.width / 2) - (paddleWidth / 2),
+        gameArea.y + gameArea.height - paddleHeight - 20,
         paddleWidth,
         paddleHeight,
-        7.0f, // Paddle speed (for keyboard)
+        7.0f,
         BLACK);
 
-    // --- ADDED: Mad Scientist Mode Toggle ---
-    bool isChaosMode = false; // Start in normal mode
+    bool isChaosMode = false;
 
-    // --- ADDED: Your Wild Idea Counters ---
-    int bricksDestroyed = 0;
-    int ballsDestroyed = 0;
+    // --- MODIFIED: Counters ---
+    int bricksDestroyed = 0;  // Per-level counter for the ratio bar
+    int ballsDestroyed = 0;   // Per-level counter for the ratio bar
+    int totalScore = 0;       // Per-game high score
+    int currentLevel = 1;     // <-- ADDED: Level counter
+    bool shouldClose = false; // <-- ADDED: For the quit button
+
+    // --- ADDED: Define Quit Button Rect ---
+    float rightPanelX = gameArea.x + gameArea.width;
+    float buttonWidth = 120;
+    float buttonHeight = 40;
+    float buttonX = rightPanelX + (uiPanelWidth - buttonWidth) / 2; // Centered
+    float buttonY = totalScreenHeight - buttonHeight - 30;          // 30px from bottom
+    Rectangle quitButtonRect = {buttonX, buttonY, buttonWidth, buttonHeight};
 
     SetTargetFPS(60);
 
-    while (!WindowShouldClose())
+    // --- MODIFIED: Added shouldClose to loop condition ---
+    while (!WindowShouldClose() && !shouldClose)
     {
         // --- 1. UPDATE ---
 
-        // Update the paddle (mouse or keyboard)
-        paddle.Update();
+        paddle.Update(gameArea);
 
-        // --- ADDED: Check for mode toggle ---
+        // --- ADDED: Check for Quit Button Click ---
+        Vector2 mousePos = GetMousePosition();
+        if (CheckCollisionPointRec(mousePos, quitButtonRect) && IsMouseButtonPressed(MOUSE_LEFT_BUTTON))
+        {
+            shouldClose = true;
+        }
+
         if (IsKeyPressed(KEY_C))
         {
             isChaosMode = !isChaosMode; // Flip the boolean
         }
 
-        // --- Ball Spawning Logic (Now with 100% more madness) ---
-
-        if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON))
-        {
-            if (isChaosMode)
-            {
-                // --- Version 2: Chaos Mode (Active if isChaosMode is true) ---
-                float newRadius = 10.0f;
-                balls.push_back(Ball(
-                    paddle.x + (paddle.width / 2),
-                    paddle.y - newRadius,
-                    newRadius,
-                    (float)GetRandomValue(-8, 8), // Random X speed
-                    -7.0f,                        // Start moving up
-                    Color{(unsigned char)GetRandomValue(50, 220),
-                          (unsigned char)GetRandomValue(50, 220),
-                          (unsigned char)GetRandomValue(50, 220), 255} // Random color
-                    ));
-            }
-            else
-            {
-                // --- Version 1: One Ball at a Time (Active if isChaosMode is false) ---
-                if (balls.empty()) // Only spawn if no balls exist
-                {
-                    float newRadius = 10.0f;
-                    balls.push_back(Ball(
-                        paddle.x + (paddle.width / 2), // Spawn at paddle center X
-                        paddle.y - newRadius,          // Spawn just above paddle
-                        newRadius,
-                        0.0f,  // Start with no X speed
-                        -7.0f, // Start moving up
-                        BLACK  // Consistent color
-                        ));
-                }
-            }
-        }
-
-        // Update all balls (and pass the paddle AND bricks in)
+        // --- MODIFIED: Update loop to handle score and destroy count ---
         for (Ball &ball : balls)
         {
             if (ball.isAlive)
             {
-                // MODIFIED: Add the returned value (0 or 1) to our counter
-                bricksDestroyed += ball.Update(paddle, bricks);
+                int scoreFromThisBall = ball.Update(paddle, bricks, gameArea);
+
+                if (scoreFromThisBall > 0)
+                {
+                    totalScore += scoreFromThisBall; // Add to game score
+                    bricksDestroyed++;               // A brick was broken!
+                }
             }
         }
 
         // --- 4. "EXPLODE" (Remove) Dead Balls ---
-        // We MUST loop backwards when removing items from a vector
-        // to avoid skipping elements.
         for (int i = balls.size() - 1; i >= 0; i--)
         {
             if (!balls[i].isAlive)
             {
-                ballsDestroyed++; // <-- ADDED: Count the destroyed ball
+                ballsDestroyed++;
                 balls.erase(balls.begin() + i);
-                // std::cout << "A ball has been removed!" << std::endl;
             }
         }
 
-        // --- 6. ADDED: Check for win condition ---
+        // --- SPAWN BALL ON CLICK ---
+        if (!isChaosMode && balls.empty() && IsMouseButtonPressed(MOUSE_LEFT_BUTTON))
+        {
+            float newRadius = 10.0f;
+            balls.push_back(Ball(
+                paddle.x + (paddle.width / 2),
+                paddle.y - newRadius,
+                newRadius,
+                (float)GetRandomValue(-5, 5),
+                -7.0f,
+                BLACK));
+        }
+        else if (isChaosMode && IsMouseButtonPressed(MOUSE_LEFT_BUTTON))
+        {
+            float newRadius = 10.0f;
+            balls.push_back(Ball(
+                paddle.x + (paddle.width / 2),
+                paddle.y - newRadius,
+                newRadius,
+                (float)GetRandomValue(-5, 5),
+                -7.0f,
+                BLACK));
+        }
+
+        // --- 6. Check for win condition ---
         bool allBricksDead = true;
         for (Brick &brick : bricks)
         {
@@ -170,78 +187,96 @@ int main(void)
         // If all bricks are dead, create a new random level!
         if (allBricksDead)
         {
-            CreateLevel(bricks, screenWidth);
-            // --- ADDED: Reset scores for the new level! ---
+            currentLevel++; // <-- ADDED: Increment the level
+            CreateLevel(bricks, gameArea);
+            // Reset per-level stats, but NOT totalScore
             bricksDestroyed = 0;
             ballsDestroyed = 0;
         }
 
         // --- 2. DRAWING ---
         BeginDrawing();
-        ClearBackground(WHITE);
+        ClearBackground(LIGHTGRAY);
+        DrawRectangleRec(gameArea, WHITE);
 
-        // --- MODIFIED: DrawText ---
-        // DrawText("Look! They bounce!", 10, 10, 20, BLACK);
+        // --- 3. DRAW UI (in the new panels) ---
 
-        // --- ADDED: UI Text for our new mode ---
+        // --- LEFT PANEL (Stats) ---
+        // --- MODIFIED: Reworked all stats text and positions ---
+        std::string scoreText = "Score: " + std::to_string(totalScore);
+        DrawText(scoreText.c_str(), 10, 10, 30, BLUE);
+
+        std::string levelText = "Level: " + std::to_string(currentLevel);
+        DrawText(levelText.c_str(), 10, 50, 30, BLACK);
+
         std::string modeText = "Mode: ";
         Color modeColor = BLACK;
         if (isChaosMode)
         {
-            modeText += "CHAOS (Press C)";
-            modeColor = RED;
+            modeText += "CHAOS!";
+            modeColor = MAROON;
         }
         else
         {
-            modeText += "Normal (Press C)";
-            modeColor = BLACK;
+            modeText += "Normal";
+            modeColor = DARKGREEN;
         }
-        DrawText(modeText.c_str(), 10, 10, 20, modeColor);
+        DrawText(modeText.c_str(), 10, 90, 25, modeColor); // Y was 50
 
-        // --- ADDED: Draw the new stats ---
-        std::string brickText = "Bricks: " + std::to_string(bricksDestroyed);
+        // --- MODIFIED: Changed text labels ---
+        std::string brickText = "Bricks Broken: " + std::to_string(bricksDestroyed);
         std::string ballText = "Balls Lost: " + std::to_string(ballsDestroyed);
-        DrawText(brickText.c_str(), 10, 40, 20, DARKGREEN);
-        DrawText(ballText.c_str(), 10, 70, 20, MAROON);
+        DrawText(brickText.c_str(), 10, 130, 25, DARKGREEN); // Y was 90
+        DrawText(ballText.c_str(), 10, 165, 25, MAROON);     // Y was 125
 
-        // --- ADDED: The Cheeky Ratio Bar ---
-        float barWidth = 200.0f;
-        float barHeight = 20.0f;
-        float barX = screenWidth - barWidth - 10; // Top right corner
-        float barY = 10.0f;
+        // --- Ratio bar (Y-pos updated) ---
+        float barWidth = uiPanelWidth - 20.0f;
+        float barHeight = 25.0f;
+        float barX = 10.0f;
+        float barY = 210.0f; // Y was 170
         int totalDestroyed = bricksDestroyed + ballsDestroyed;
 
         float brickRatio = 0.0f;
         if (totalDestroyed > 0)
         {
-            // This is the percentage of the bar that bricks take up
             brickRatio = (float)bricksDestroyed / (float)totalDestroyed;
         }
 
-        // Draw the "empty" part of the bar (representing balls)
         DrawRectangle(barX, barY, barWidth, barHeight, Fade(MAROON, 0.5f));
-        // Draw the "full" part of the bar (representing bricks)
         DrawRectangle(barX, barY, (int)(barWidth * brickRatio), barHeight, DARKGREEN);
-        // Draw an outline
         DrawRectangleLines((int)barX, (int)barY, (int)barWidth, (int)barHeight, BLACK);
+        DrawText("Level K/D Ratio", (int)barX, (int)barY + (int)barHeight + 10, 15, BLACK);
 
-        // Draw a label
-        DrawText("Brick / Ball Ratio", (int)barX, (int)barY + (int)barHeight + 5, 10, BLACK);
+        // --- ADDED: FPS Meter ---
+        DrawFPS(10, totalScreenHeight - 30); // Draw in bottom-left
 
-        // Draw all the bricks
+        // --- RIGHT PANEL (How to Play) ---
+        DrawText("HOW TO PLAY", (int)rightPanelX + 10, 10, 30, BLACK);
+        DrawText("Mouse: Move Paddle", (int)rightPanelX + 10, 60, 20, BLACK);
+        DrawText("Click: Spawn Ball", (int)rightPanelX + 10, 90, 20, BLACK);
+        DrawText("C: Toggle Chaos", (int)rightPanelX + 10, 120, 20, BLACK);
+
+        // --- ADDED: Draw Quit Button ---
+        bool isMouseOverButton = CheckCollisionPointRec(mousePos, quitButtonRect);
+        Color buttonColor = isMouseOverButton ? RED : MAROON;
+
+        DrawRectangleRec(quitButtonRect, buttonColor);
+        DrawText("QUIT GAME", (int)(quitButtonRect.x + (quitButtonRect.width - MeasureText("QUIT GAME", 20)) / 2), (int)(quitButtonRect.y + (quitButtonRect.height - 20) / 2), 20, WHITE);
+        DrawRectangleLines((int)quitButtonRect.x, (int)quitButtonRect.y, (int)quitButtonRect.width, (int)quitButtonRect.height, BLACK);
+
+        // --- 4. DRAW GAME OBJECTS (inside gameArea) ---
+
         for (Brick &brick : bricks)
         {
             brick.Draw();
         }
 
-        // Draw all balls that are still in the vector
+        paddle.Draw();
+
         for (Ball &ball : balls)
         {
             ball.Draw();
         }
-
-        // Draw the paddle
-        paddle.Draw();
 
         EndDrawing();
     }

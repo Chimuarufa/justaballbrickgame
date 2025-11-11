@@ -15,13 +15,13 @@ public:
 
     Ball(float posX, float posY, float r, float spX, float spY, Color c);
 
-    // MODIFIED: Update now returns an INT (0 for no bricks hit, 1 for a brick hit)
-    int Update(Paddle &paddle, std::vector<Brick> &bricks);
+    // MODIFIED: Update now needs the gameArea
+    int Update(Paddle &paddle, std::vector<Brick> &bricks, Rectangle gameArea);
     void Draw();
 
 private:
     void Move();
 
-    // MODIFIED: Bounce also returns an INT
-    int Bounce(Paddle &paddle, std::vector<Brick> &bricks);
+    // MODIFIED: Bounce also needs the gameArea
+    int Bounce(Paddle &paddle, std::vector<Brick> &bricks, Rectangle gameArea);
 };

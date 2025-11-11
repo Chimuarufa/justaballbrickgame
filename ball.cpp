@@ -9,7 +9,7 @@ Ball::Ball(float posX, float posY, float r, float spX, float spY, Color c)
     speedX = spX;
     speedY = spY;
     color = c;
-    isAlive = true; // <-- ADDED: All balls start alive
+    isAlive = true;
 }
 void Ball::Move()
 {
@@ -17,113 +17,109 @@ void Ball::Move()
     y += speedY;
 }
 
-// MODIFIED: This function now returns an int
-int Ball::Bounce(Paddle &paddle, std::vector<Brick> &bricks)
+// MODIFIED: This function now needs the gameArea for bounds
+int Ball::Bounce(Paddle &paddle, std::vector<Brick> &bricks, Rectangle gameArea)
 {
-    int bricksHit = 0; // <-- ADDED: Counter to return
+    int scoreGained = 0; // <-- MODIFIED: Was bricksHit, now tracks score
 
-    // --- Wall Bouncing ---
+    // --- Wall Bouncing (Now relative to gameArea) ---
 
     // Bounce off left/right walls
-    if (x + radius >= GetScreenWidth() || x - radius <= 0)
+    if (x + radius >= gameArea.x + gameArea.width || x - radius <= gameArea.x)
     {
         speedX = -speedX;
     }
 
     // Bounce off *top* wall only
-    if (y - radius <= 0)
+    if (y - radius <= gameArea.y)
     {
         speedY = -speedY;
     }
 
     // --- Bottom Screen "Explosion" ---
-    // If ball hits bottom, mark it as dead
-    if (y + radius >= GetScreenHeight())
+    if (y + radius >= gameArea.y + gameArea.height)
     {
-        isAlive = false; // <-- MODIFIED: No bounce, just "die"
+        isAlive = false;
     }
 
     // --- Paddle Bouncing ---
     if (CheckCollisionCircleRec({x, y}, radius, paddle.GetRect()))
     {
-        // --- This is the new "advanced bounce" logic ---
-
-        // 1. Always bounce up
-        // We use -fabs() (negative absolute value) to guarantee
-        // it *always* bounces UP, even if it gets stuck for a frame.
-        speedY = -fabs(speedY);
-
-        // 2. Calculate *where* on the paddle it hit
-        //    paddle.x + paddle.width / 2      <-- This is the center X of the paddle
-        //    x - (paddle_center)              <-- This is the distance from the center
-        //    (distance) / (paddle.width / 2)  <-- This normalizes it to -1.0 to 1.0
-        float hitPosition = (x - (paddle.x + paddle.width / 2)) / (paddle.width / 2);
-
-        // 3. Change X speed based on hit position
-        //    The "10.0f" is a "max horizontal speed" factor.
-        //    If it hits the far left (-1.0), speedX becomes -10.0
-        //    If it hits the center (0.0), speedX becomes 0.0
-        //    If it hits the far right (1.0), speedX becomes 10.0
-        speedX = hitPosition * 10.0f;
-    }
-
-    // --- 3. ADDED: BRICK BOUNCING ---
-    for (Brick &brick : bricks)
-    {
-        // Only check for collision if the brick is alive
-        if (brick.isAlive && CheckCollisionCircleRec({x, y}, radius, brick.GetRect()))
+        if (speedY > 0) // Only bounce if ball is moving down
         {
-            brick.isAlive = false; // "Kill" the brick
-            bricksHit = 1;         // <-- ADDED: Report that we hit a brick
+            // 1. Always bounce up
+            speedY = -fabs(speedY);
 
-            // --- Collision Response Logic ---
-            // Figure out if it was a vertical or horizontal hit.
-            // This is a common AABB-style response.
+            // 2. Calculate *where* on the paddle it hit
+            float hitPosition = (x - (paddle.x + paddle.width / 2)) / (paddle.width / 2);
 
-            // Find the vector from ball center to brick center
-            float brickCenterX = brick.x + brick.width / 2;
-            float brickCenterY = brick.y + brick.height / 2;
-
-            float vecX = x - brickCenterX;
-            float vecY = y - brickCenterY;
-
-            // Find how far into the brick the ball is, in each axis
-            float overlapX = (radius + brick.width / 2) - fabs(vecX);
-            float overlapY = (radius + brick.height / 2) - fabs(vecY);
-
-            // If overlapX is smaller, it's a side collision
-            if (overlapX < overlapY)
-            {
-                speedX = -speedX;
-                // Nudge the ball out to prevent it from getting stuck
-                x += (vecX > 0 ? overlapX : -overlapX);
-            }
-            // Otherwise, it's a top/bottom collision
-            else
-            {
-                speedY = -speedY;
-                // Nudge the ball out
-                y += (vecY > 0 ? overlapY : -overlapY);
-            }
-
-            break; // Exit the loop immediately after hitting one brick
+            // 3. Change X speed based on hit position
+            // We use 7.0f as a max horizontal speed factor
+            speedX = hitPosition * 7.0f;
         }
     }
 
-    return bricksHit; // <-- ADDED: Return the count
+    // --- BRICK Bouncing (MODIFIED) ---
+    for (Brick &brick : bricks)
+    {
+        if (brick.isAlive && CheckCollisionCircleRec({x, y}, radius, brick.GetRect()))
+        {
+            // --- NEW HEALTH LOGIC ---
+            brick.health--;
+
+            // Change color based on new health
+            if (brick.health == 2)
+            {
+                brick.color = ORANGE;
+            }
+            else if (brick.health == 1)
+            {
+                brick.color = RED;
+            }
+            else if (brick.health <= 0)
+            {
+                brick.isAlive = false;
+                scoreGained += brick.scoreValue; // <-- ADD SCORE!
+            }
+
+            // --- Bounce Logic ---
+            // Figure out if we hit the side or top/bottom
+            // This is a simple (but not perfect) way to check
+
+            // Store old position to see where we came from
+            float oldX = x - speedX;
+            float oldY = y - speedY;
+
+            // Check horizontal collision (hit the side of the brick)
+            bool hitSide = (oldX + radius <= brick.x || oldX - radius >= brick.x + brick.width);
+
+            if (hitSide)
+            {
+                speedX = -speedX;
+            }
+            else // Hit top or bottom
+            {
+                speedY = -speedY;
+            }
+
+            // We only handle one brick collision per frame for simplicity
+            break;
+        }
+    }
+
+    return scoreGained; // <-- MODIFIED: Return the score
 }
 
-// Update function signature changed
-int Ball::Update(Paddle &paddle, std::vector<Brick> &bricks)
+// MODIFIED: Update function signature changed
+int Ball::Update(Paddle &paddle, std::vector<Brick> &bricks, Rectangle gameArea)
 {
     Move();
-    int bricksHit = Bounce(paddle, bricks); // Pass the paddle AND bricks down
-    return bricksHit;                       // <-- ADDED: Pass the count back up
+    int scoreGained = Bounce(paddle, bricks, gameArea); // Pass all info down
+    return scoreGained;                                 // <-- MODIFIED: Pass the score back up
 }
 
 void Ball::Draw()
 {
-    // Only draw if the ball is alive
     if (isAlive)
     {
         DrawCircle((int)x, (int)y, radius, color);

@@ -1,26 +1,31 @@
-#include "brick.h"
+#include "Brick.h"
 
-// Constructor: Just assigns all the values
-Brick::Brick(float posX, float posY, float w, float h, Color c)
+Brick::Brick(float posX, float posY, float w, float h, int hp, int score, Color c)
 {
     x = posX;
     y = posY;
     width = w;
     height = h;
+    isAlive = true;
+    health = hp;        // <-- ADDED
+    scoreValue = score; // <-- ADDED
     color = c;
-    isAlive = true; // All bricks start alive
 }
 
 void Brick::Draw()
 {
-    // Only draw the brick if it's alive
     if (isAlive)
     {
+        // Draw the brick
         DrawRectangle((int)x, (int)y, (int)width, (int)height, color);
+        // Add a little 3D-ish border
+        DrawRectangleLines((int)x, (int)y, (int)width, (int)height, BLACK);
     }
 }
 
+// --- ADDED: The definition for the new function ---
 Rectangle Brick::GetRect()
 {
+    // raylib's Rectangle struct: { x, y, width, height }
     return {x, y, width, height};
 }

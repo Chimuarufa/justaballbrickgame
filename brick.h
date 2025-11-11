@@ -6,14 +6,15 @@ class Brick
 public:
     float x, y;
     float width, height;
-    bool isAlive;
     Color color;
+    bool isAlive;
+    int health;
+    int scoreValue;
 
-    // Constructor to set up a new brick
-    Brick(float posX, float posY, float w, float h, Color c);
+    Brick(float posX, float posY, float w, float h, int hp, int score, Color c);
 
     void Draw();
 
-    // Helper function just like the paddle's
+    // --- ADDED: The missing helper function ---
     Rectangle GetRect();
 };
